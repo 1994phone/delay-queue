@@ -1,0 +1,20 @@
+delay:
+  job:
+    capacity: 16
+spring:
+  kafka:
+    producer:
+      bootstrap-servers: localhost:9092 #这个是kafka的地址,对应你server.properties中配置的
+      batch-size: 16384 #批量大小
+      acks: -1 #应答级别:多少个分区副本备份完成时向生产者发送ack确认(可选0、1、all/-1)
+      retries: 10 # 消息发送重试次数
+      #transaction-id-prefix: transaction
+      buffer-memory: 33554432
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        linger:
+          ms: 10000 #提交延迟
+          #partitioner: #指定分区器
+          #class: pers.zhang.config.CustomerPartitionHandler
+      client-id: delay-job-client
