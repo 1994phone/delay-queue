@@ -11,7 +11,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * packageName cn.orins
@@ -60,7 +61,7 @@ public class DelayJobBuckets implements Closeable {
      */
     private final RedissonClient redissonClient;
 
-    private final ReentrantLock lock = new ReentrantLock();
+    private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
 
     private final String BUCKET_NAME_PREFIX = "delay-job-";
 
@@ -106,13 +107,13 @@ public class DelayJobBuckets implements Closeable {
      * "delay-job-xx" , 不然中途宕机，重启之后，redis的任务就丢失了
      */
     public void addBucket() {
-        lock.lock();
+        rwLock.writeLock().lock();
         try {
             if (this.capacity >= MAX_CAPACITY) {
                 throw new JobException("桶数量超过限制");
             }
 
-            String bucketName = BUCKET_NAME_PREFIX + this.capacity + 1;
+            String bucketName = BUCKET_NAME_PREFIX + (this.capacity + 1);
             if (this.bucketMap.containsKey(bucketName)) {
                 throw new JobException("桶名重复");
             }
@@ -123,7 +124,7 @@ public class DelayJobBuckets implements Closeable {
             this.executor.execute(delayJobBucket);
             this.capacity++;
         } finally {
-            lock.unlock();
+            rwLock.writeLock().unlock();
         }
     }
 
@@ -134,7 +135,7 @@ public class DelayJobBuckets implements Closeable {
      * @param bucketName 桶名
      */
     public void removeBucket(String bucketName) {
-        lock.lock();
+        rwLock.writeLock().lock();
         try {
             DelayJobBucket delayJobBucket = this.bucketMap.get(bucketName);
             if (delayJobBucket != null) {
@@ -144,7 +145,7 @@ public class DelayJobBuckets implements Closeable {
                 this.capacity--;
             }
         } finally {
-            lock.unlock();
+            rwLock.writeLock().unlock();
         }
     }
 
@@ -171,17 +172,18 @@ public class DelayJobBuckets implements Closeable {
      * @return 桶
      */
     public DelayJobBucket chooseBucket(String jobId) {
-        lock.lock();
+        rwLock.readLock().lock();
         try {
             if (this.capacity == 0) {
                 throw new JobException("没有可用的桶");
             }
 
             int hash = hash(jobId);
-            int index = hash & (this.capacity - 1);
+            // 使用取模运算，兼容任意 capacity 值（不要求 2 的幂）
+            int index = Math.abs(hash % this.capacity);
             return this.delayJobBucketList.get(index);
         } finally {
-            lock.unlock();
+            rwLock.readLock().unlock();
         }
     }
 

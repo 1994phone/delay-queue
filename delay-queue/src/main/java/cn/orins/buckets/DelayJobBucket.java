@@ -9,6 +9,7 @@ import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
 /**
@@ -85,23 +86,38 @@ public class DelayJobBucket implements JobListener {
                 continue;
             }
             Double jobExpireTime = scoredSortedSet.firstScore();
-            if (jobExpireTime != null && jobExpireTime <= System.currentTimeMillis()) {
+            if (jobExpireTime == null) {
+                // 分数为空说明集合刚好被清空了，继续下一轮检查
+                continue;
+            }
 
-                String jobId = scoredSortedSet.pollFirst();
+            long now = System.currentTimeMillis();
+            if (jobExpireTime > now) {
+                // 任务未到期，休眠到最近的到期时间，避免 CPU 空转
+                long sleepMs = (long) (jobExpireTime - now);
+                parkThread = Thread.currentThread();
+                LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(sleepMs));
+                parkThread = null;
+                continue;
+            }
 
-                try {
-                    //  将任务放入准备队列中去
-                    readyJobBucket.addReadyJob(jobId);
+            String jobId = scoredSortedSet.pollFirst();
+            if (jobId == null) {
+                continue;
+            }
 
-                    //  然后更新这个db状态
-                    DbUtils.changeJobStatus(jobId, JobStatusEnum.READY_WAIT);
+            try {
+                //  将任务放入准备队列中去
+                readyJobBucket.addReadyJob(jobId);
 
-                    logger.info("{}将任务{}存入就绪队列成功。", this.getBucketName(), jobId);
-                } catch (Exception e) {
-                    logger.error("{}将任务{}存入就绪队列失败。", this.getBucketName(), jobId, e);
-                    // todo 告警
-                    DbUtils.changeJobStatus(jobId, JobStatusEnum.ADD_READY_QUEUE_FAIL);
-                }
+                //  然后更新这个db状态
+                DbUtils.changeJobStatus(jobId, JobStatusEnum.READY_WAIT);
+
+                logger.info("{}将任务{}存入就绪队列成功。", this.getBucketName(), jobId);
+            } catch (Exception e) {
+                logger.error("{}将任务{}存入就绪队列失败。", this.getBucketName(), jobId, e);
+                // todo 告警
+                DbUtils.changeJobStatus(jobId, JobStatusEnum.ADD_READY_QUEUE_FAIL);
             }
         }
     }

@@ -51,8 +51,8 @@ public class JobController {
      * @param jobId 任务id
      * @return
      */
-    @GetMapping("/cancelJob")
-    public Boolean cancelJob(String jobId) {
+    @PostMapping("/cancelJob")
+    public Boolean cancelJob(@RequestParam String jobId) {
         return delayJobHandler.cancelJob(jobId);
     }
 
@@ -74,8 +74,8 @@ public class JobController {
      * @param topic   主题
      * @return
      */
-    @GetMapping("/createTopicRelation")
-    public Boolean createTopicRelation(String bizType, String topic) {
+    @PostMapping("/createTopicRelation")
+    public Boolean createTopicRelation(@RequestParam String bizType, @RequestParam String topic) {
         DbUtils.saveTopicRelations(bizType, topic);
         return true;
     }

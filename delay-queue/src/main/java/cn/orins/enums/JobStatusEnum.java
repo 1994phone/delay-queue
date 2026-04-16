@@ -4,6 +4,9 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.util.Arrays;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * packageName cn.orins.topic
@@ -27,12 +30,14 @@ public enum JobStatusEnum {
     ADD_READY_QUEUE_FAIL(8, "存入就绪队列失败"),
     ;
 
+    private static final Map<Integer, JobStatusEnum> STATUS_MAP =
+            Arrays.stream(values()).collect(Collectors.toMap(JobStatusEnum::getStatus, Function.identity()));
 
     private final Integer status;
 
     private final String statusDesc;
 
     public static JobStatusEnum find(Integer status) {
-        return Arrays.stream(values()).filter(x -> x.status.equals(status)).findFirst().orElse(null);
+        return STATUS_MAP.get(status);
     }
 }

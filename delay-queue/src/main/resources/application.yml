@@ -2,6 +2,12 @@ delay:
   job:
     capacity: 16
 spring:
+  redis:
+    redisson:
+      config: |
+        singleServerConfig:
+          address: "redis://localhost:6379"
+        codec: !<org.redisson.codec.JsonJacksonCodec> {}
   kafka:
     producer:
       bootstrap-servers: localhost:9092 #这个是kafka的地址,对应你server.properties中配置的
