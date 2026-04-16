@@ -23,15 +23,16 @@ public class TopicUtils {
     /**
      * 给kafka 推送消息
      *
-     * @param topic   主题
-     * @param message 消息
+     * @param topic    主题
+     * @param message  消息
+     * @param callback 发送结果回调
      */
     public static void send(String topic, String message, ListenableFutureCallback<SendResult<String, Object>> callback) {
         initKafkaTemplate();
         kafkaTemplate.send(topic, message).addCallback(callback);
     }
 
-    private static void initKafkaTemplate() {
+    private static synchronized void initKafkaTemplate() {
         if (kafkaTemplate == null) {
             kafkaTemplate = SpringUtils.getBean(KafkaTemplate.class);
         }

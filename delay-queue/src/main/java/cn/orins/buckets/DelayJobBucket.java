@@ -9,6 +9,7 @@ import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
 /**
@@ -84,24 +85,46 @@ public class DelayJobBucket implements JobListener {
                 LockSupport.park();
                 continue;
             }
+            // 先设置 parkThread，确保后续 addDelayJob 能唤醒本线程（标准 check-then-park 模式）
+            parkThread = Thread.currentThread();
+
             Double jobExpireTime = scoredSortedSet.firstScore();
-            if (jobExpireTime != null && jobExpireTime <= System.currentTimeMillis()) {
+            if (jobExpireTime == null) {
+                // 分数为空说明集合刚好被清空了，清除 parkThread 继续下一轮
+                parkThread = null;
+                continue;
+            }
 
-                String jobId = scoredSortedSet.pollFirst();
+            long now = System.currentTimeMillis();
+            if (jobExpireTime > now) {
+                // 任务未到期，休眠到最近的到期时间，避免 CPU 空转
+                // parkThread 已在上方设置，addDelayJob 如果在此期间添加了更短延迟的任务会 unpark 本线程
+                long sleepMs = (long) (jobExpireTime - now);
+                LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(sleepMs));
+                parkThread = null;
+                continue;
+            }
 
-                try {
-                    //  将任务放入准备队列中去
-                    readyJobBucket.addReadyJob(jobId);
+            // 任务已到期，清除 parkThread 后处理
+            parkThread = null;
 
-                    //  然后更新这个db状态
-                    DbUtils.changeJobStatus(jobId, JobStatusEnum.READY_WAIT);
+            String jobId = scoredSortedSet.pollFirst();
+            if (jobId == null) {
+                continue;
+            }
 
-                    logger.info("{}将任务{}存入就绪队列成功。", this.getBucketName(), jobId);
-                } catch (Exception e) {
-                    logger.error("{}将任务{}存入就绪队列失败。", this.getBucketName(), jobId, e);
-                    // todo 告警
-                    DbUtils.changeJobStatus(jobId, JobStatusEnum.ADD_READY_QUEUE_FAIL);
-                }
+            try {
+                //  将任务放入准备队列中去
+                readyJobBucket.addReadyJob(jobId);
+
+                //  然后更新这个db状态
+                DbUtils.changeJobStatus(jobId, JobStatusEnum.READY_WAIT);
+
+                logger.info("{}将任务{}存入就绪队列成功。", this.getBucketName(), jobId);
+            } catch (Exception e) {
+                logger.error("{}将任务{}存入就绪队列失败。", this.getBucketName(), jobId, e);
+                // todo 告警
+                DbUtils.changeJobStatus(jobId, JobStatusEnum.ADD_READY_QUEUE_FAIL);
             }
         }
     }

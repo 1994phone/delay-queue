@@ -6,7 +6,6 @@ import cn.orins.enums.JobStatusEnum;
 import cn.orins.kafka.TopicUtils;
 import lombok.Data;
 import org.redisson.api.RBlockingQueue;
-import org.redisson.api.RList;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,9 +81,8 @@ public class ReadyJobBucket implements JobListener {
      * @param jobId 任务Id
      */
     public void addReadyJob(String jobId) {
-        // 使用不重复队列
-        RList<String> list = redissonClient.getList(bucketName);
-        list.add(jobId);
+        RBlockingQueue<String> blockingQueue = redissonClient.getBlockingQueue(bucketName);
+        blockingQueue.add(jobId);
         if (parkThread != null) {
             LockSupport.unpark(parkThread);
             parkThread = null;
