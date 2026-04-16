@@ -85,21 +85,28 @@ public class DelayJobBucket implements JobListener {
                 LockSupport.park();
                 continue;
             }
+            // 先设置 parkThread，确保后续 addDelayJob 能唤醒本线程（标准 check-then-park 模式）
+            parkThread = Thread.currentThread();
+
             Double jobExpireTime = scoredSortedSet.firstScore();
             if (jobExpireTime == null) {
-                // 分数为空说明集合刚好被清空了，继续下一轮检查
+                // 分数为空说明集合刚好被清空了，清除 parkThread 继续下一轮
+                parkThread = null;
                 continue;
             }
 
             long now = System.currentTimeMillis();
             if (jobExpireTime > now) {
                 // 任务未到期，休眠到最近的到期时间，避免 CPU 空转
+                // parkThread 已在上方设置，addDelayJob 如果在此期间添加了更短延迟的任务会 unpark 本线程
                 long sleepMs = (long) (jobExpireTime - now);
-                parkThread = Thread.currentThread();
                 LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(sleepMs));
                 parkThread = null;
                 continue;
             }
+
+            // 任务已到期，清除 parkThread 后处理
+            parkThread = null;
 
             String jobId = scoredSortedSet.pollFirst();
             if (jobId == null) {

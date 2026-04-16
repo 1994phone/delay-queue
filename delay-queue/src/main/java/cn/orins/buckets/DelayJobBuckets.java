@@ -179,8 +179,8 @@ public class DelayJobBuckets implements Closeable {
             }
 
             int hash = hash(jobId);
-            // 使用取模运算，兼容任意 capacity 值（不要求 2 的幂）
-            int index = Math.abs(hash % this.capacity);
+            // 使用位运算 + 取模，兼容任意 capacity 值且避免 Integer.MIN_VALUE 溢出
+            int index = (hash & Integer.MAX_VALUE) % this.capacity;
             return this.delayJobBucketList.get(index);
         } finally {
             rwLock.readLock().unlock();
